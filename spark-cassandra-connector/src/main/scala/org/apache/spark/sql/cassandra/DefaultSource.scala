@@ -9,7 +9,7 @@ import org.apache.spark.sql.sources.{BaseRelation, CreatableRelationProvider, Re
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.{DataFrame, SQLContext, SaveMode}
 
-import com.datastax.spark.connector.cql.{AuthConfFactory, CassandraConnectorConf}
+import com.datastax.spark.connector.cql.{AuthConfFactory, CassandraConnectorConf, DefaultAuthConfFactory}
 import com.datastax.spark.connector.rdd.ReadConf
 import com.datastax.spark.connector.writer.WriteConf
 
@@ -88,7 +88,11 @@ class DefaultSource extends RelationProvider with SchemaRelationProvider with Cr
         if (table.buildScan().isEmpty()) {
           table.insert(data, overwrite = false)
         } else {
-          throw new UnsupportedOperationException("'Writing to a non-empty Cassandra Table is not allowed.'")
+          throw new UnsupportedOperationException(
+            s"""'SaveMode is set to ErrorIfExists and Table
+               |${tableRef.keyspace + "." + tableRef.table} already exists and contains data.
+               |Perhaps you meant to set the DataFrame write mode to Append?
+               |Example: df.write.format.options.mode(SaveMode.Append).save()" '""".stripMargin)
         }
       case Ignore =>
         if (table.buildScan().isEmpty()) {
@@ -128,7 +132,8 @@ object DefaultSource {
     WriteConf.Properties.map(_.name) ++
     CassandraConnectorConf.Properties.map(_.name) ++
     CassandraSourceRelation.Properties.map(_.name) ++
-    AuthConfFactory.Properties.map(_.name)
+    AuthConfFactory.Properties.map(_.name) ++
+    DefaultAuthConfFactory.properties
 
   // Dot is not allowed in Options key for Spark SQL parsers, so convert . to _
   // Map converted property to origin property name

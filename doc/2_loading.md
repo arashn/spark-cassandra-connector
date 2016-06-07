@@ -248,7 +248,7 @@ as the full partition key is specified.
 
 `joinWithCassandraTable` utilizes the java drive to execute a single query for every partition
 required by the source RDD so no un-needed data will be requested or serialized. This means a join between any RDD
-and a Cassandra Table can be preformed without doing a full table scan. . When preformed
+and a Cassandra Table can be performed without doing a full table scan. When performed
 between two Cassandra Tables which share the same partition key this will *not* require movement of data between machines.
 In all cases this method will use the source RDD's partitioning and placement for data locality.
 
@@ -319,7 +319,7 @@ See [Reference Section](reference.md#read-tuning-parameters)
 
 In addition you are able to set these parameters on a per table basis by using `implicit vals`. This
 allows a user to define a set of parameters in a separate object and import them into a block of 
-code rather than repeatedly passing the same [`ReadConf` object] (https://github.com/datastax/spark-cassandra-connector/blob/master/spark-cassandra-connector/src/main/scala/com/datastax/spark/connector/rdd/ReadConf.scala#L7-L18).
+code rather than repeatedly passing the same [`ReadConf` object](https://github.com/datastax/spark-cassandra-connector/blob/master/spark-cassandra-connector/src/main/scala/com/datastax/spark/connector/rdd/ReadConf.scala#L7-L18).
 
 ```scala
 object ReadConfigurationOne {

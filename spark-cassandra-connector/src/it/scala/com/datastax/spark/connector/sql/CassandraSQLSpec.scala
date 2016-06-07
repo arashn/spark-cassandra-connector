@@ -270,7 +270,29 @@ class CassandraSQLSpec extends SparkCassandraITFlatSpecBase {
                  |INSERT INTO $ks1.varint_test(id, series, rollup_minutes, event)
                  |VALUES(1234567891234, 1234567891235, 1234567891236, 'event')
                  |""".stripMargin.replaceAll("\n", " "))
-          }
+          },
+
+          Future {
+            session.execute(s"CREATE TABLE $ks1.tuple_test1 (id int PRIMARY KEY, t Tuple<text, int>)")
+            session.execute(s"INSERT INTO $ks1.tuple_test1 (id, t) VALUES (1, ('xyz', 2))")
+          },
+
+          Future {
+            session.execute(
+              s"""
+                 |CREATE TABLE IF NOT EXISTS $ks1.index_test (
+                 |  ipk1 int,
+                 |  pk2 int,
+                 |  id1 int,
+                 |  d2 int,
+                 |  PRIMARY KEY ((ipk1, pk2))
+                 |)""".stripMargin)
+          	session.execute(s"CREATE INDEX IF NOT EXISTS idx_ipk1_index_test on $ks1.index_test(ipk1)")
+          	session.execute(s"CREATE INDEX IF NOT EXISTS idx_id1_index_test on $ks1.index_test(id1)")
+
+          	session.execute(s"INSERT INTO $ks1.index_test (ipk1, pk2, id1, d2) VALUES (1, 1, 1, 1)")
+          	session.execute(s"INSERT INTO $ks1.index_test (ipk1, pk2, id1, d2) VALUES (2, 2, 2, 2)")
+ 		  }
         )
       },
       Future {
@@ -309,6 +331,21 @@ class CassandraSQLSpec extends SparkCassandraITFlatSpecBase {
   it should "allow to select rows with index columns" in {
     val result = cc.sql(s"SELECT * FROM test1 WHERE g = 2").collect()
     result should have length 4
+  }
+
+  it should "allow to select rows with indexed columns that do not belong to partition key" in {
+    val result = cc.sql(s"SELECT * FROM $ks1.index_test WHERE id1 = 2").collect()
+    result should have length 1
+  }
+
+  it should "allow to select rows with indexed columns that belong to partition key" in {
+    val result = cc.sql(s"SELECT * FROM $ks1.index_test WHERE ipk1 = 2").collect()
+    result should have length 1
+  }
+
+  it should "allow to select rows with indexed partition and regular columns" in {
+    val result = cc.sql(s"SELECT * FROM $ks1.index_test WHERE ipk1 = 2 and id1 = 2").collect()
+    result should have length 1
   }
 
   it should "allow to select rows with >= clause" in {
@@ -603,5 +640,13 @@ class CassandraSQLSpec extends SparkCassandraITFlatSpecBase {
          | AND rollup_minutes = 1234567891236
       """.stripMargin.replaceAll("\n", " ")
     ).collect() should have length 1
+  }
+
+  it should "read C* Tuple using sql" in {
+    val df = cc.sql(s"SELECT * FROM $ks1.tuple_test1")
+
+    df.count should be (1)
+    df.first.getStruct(1).getString(0) should be ("xyz")
+    df.first.getStruct(1).getInt(1) should be (2)
   }
 }

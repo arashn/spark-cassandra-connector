@@ -1,15 +1,18 @@
 package com.datastax.spark.connector.cql
 
+import java.io.IOException
+
 import com.datastax.spark.connector._
-import com.datastax.spark.connector.mapper.{DataFrameColumnMapper, ColumnMapper}
+import com.datastax.spark.connector.mapper.{ColumnMapper, DataFrameColumnMapper}
 import org.apache.spark.Logging
 import org.apache.spark.sql.DataFrame
 
 import scala.collection.JavaConversions._
 import scala.language.existentials
-import scala.util.Properties
+import scala.util.{Properties, Try}
 import com.datastax.driver.core._
-import com.datastax.spark.connector.types.{CounterType, ColumnType}
+import com.datastax.spark.connector.types.{ColumnType, CounterType}
+import com.datastax.spark.connector.util.NameTools
 import com.datastax.spark.connector.util.Quote._
 
 /** Abstract column / field definition.
@@ -145,15 +148,21 @@ case class TableDef(
 
   val allColumns = regularColumns ++ clusteringColumns ++ partitionKey
 
-  val indexesForColumnName: Map[String, Seq[IndexDef]] = indexes.groupBy(_.target)
+  private val indexesForTarget: Map[String, Seq[IndexDef]] = indexes.groupBy(_.target)
 
-  val indexesForColumnDef: Map[ColumnDef, Seq[IndexDef]] = {
-
-    for ((target: String, indexes: Seq[IndexDef]) <- indexesForColumnName) yield {
-      (columnByName(target) -> indexes)
+  /**
+    * Contains indices that can be directly mapped to single column, namely indices with a handled column
+    * name as a target. Indices that can not be mapped to a single column are dropped.
+    */
+  private val indexesForColumnDef: Map[ColumnDef, Seq[IndexDef]] = {
+    indexesForTarget.flatMap {
+      case (target, indexes) => Try(columnByName(target) -> indexes).toOption
     }
   }
 
+  def isIndexed(column: String): Boolean = {
+    indexesForTarget.contains(column)
+  }
 
   def isIndexed(column: ColumnDef): Boolean = {
     indexesForColumnDef.contains(column)
@@ -191,7 +200,7 @@ case class TableDef(
   type ValueRepr = CassandraRow
   
   def newInstance(columnValues: Any*): CassandraRow = {
-    new CassandraRow(columnNames, columnValues.toIndexedSeq.map(_.asInstanceOf[AnyRef]))
+    new CassandraRow(CassandraRowMetadata.fromColumnNames(columnNames), columnValues.toIndexedSeq.map(_.asInstanceOf[AnyRef]))
   }
 }
 
@@ -247,6 +256,7 @@ object Schema extends Logging {
   }
 
   /** Fetches database schema from Cassandra. Provides access to keyspace, table and column metadata.
+    *
     * @param keyspaceName if defined, fetches only metadata of the given keyspace
     * @param tableName if defined, fetches only metadata of the given table
     */
@@ -294,11 +304,17 @@ object Schema extends Logging {
       for (keyspace <- metadata.getKeyspaces.toSet if isKeyspaceSelected(keyspace)) yield
         KeyspaceDef(keyspace.getName, fetchTables(keyspace))
 
+    /**
+      * See [[com.datastax.driver.core.Metadata#handleId]]
+      */
+    def handleId(table: TableMetadata, columnName: String): String =
+      Option(table.getColumn(columnName)).map(_.getName).getOrElse(columnName)
+
     def getIndexDefs(tableOrView: AbstractTableMetadata): Seq[IndexDef] = tableOrView match {
       case table: TableMetadata =>
         table.getIndexes.map(index => {
-          val targetName = table.getColumn(index.getTarget).getName
-          IndexDef(index.getIndexClassName, targetName, index.getName, Map.empty)
+          val target = handleId(table, index.getTarget)
+          IndexDef(index.getIndexClassName, target, index.getName, Map.empty)
         }).toSeq
       case view: MaterializedViewMetadata => Seq.empty
     }
@@ -312,4 +328,24 @@ object Schema extends Logging {
       Schema(clusterName, keyspaces)
     }
   }
+
+
+  /**
+    * Fetches a TableDef for a particular Cassandra Table throws an
+    * exception with name options if the table is not found.
+    */
+  def tableFromCassandra(
+    connector: CassandraConnector,
+    keyspaceName: String,
+    tableName: String): TableDef = {
+
+    fromCassandra(connector, Some(keyspaceName), Some(tableName)).tables.headOption match {
+      case Some(t) => t
+      case None =>
+        val metadata: Metadata = connector.withClusterDo(_.getMetadata)
+        val suggestions = NameTools.getSuggestions(metadata, keyspaceName, tableName)
+        val errorMessage = NameTools.getErrorString(keyspaceName, tableName, suggestions)
+        throw new IOException(errorMessage)
+      }
+    }
 }

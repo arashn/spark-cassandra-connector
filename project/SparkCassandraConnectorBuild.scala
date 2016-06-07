@@ -20,6 +20,7 @@ import java.io.File
 import sbt._
 import sbt.Keys._
 import sbtsparkpackage.SparkPackagePlugin.autoImport._
+import pl.project13.scala.sbt.JmhPlugin
 
 object CassandraSparkBuild extends Build {
   import Settings._
@@ -98,7 +99,14 @@ object CassandraSparkBuild extends Build {
     id = s"$namespace-doc",
     base = file(s"$namespace-doc"),
     settings = defaultSettings ++ Seq(libraryDependencies ++= Dependencies.spark)
-  ) dependsOn(connector)
+  ) dependsOn connector
+
+  lazy val perf = Project(
+    id = s"$namespace-perf",
+    base = file(s"$namespace-perf"),
+    settings = projectSettings,
+    dependencies = Seq(connector, embedded)
+  ) enablePlugins(JmhPlugin)
 
   def crossBuildPath(base: sbt.File, v: String): sbt.File = base / s"scala-$v" / "src"
 
@@ -156,7 +164,7 @@ object Artifacts {
   val akkaActor           = "com.typesafe.akka"       %% "akka-actor"            % Akka           % "provided"  // ApacheV2
   val akkaRemote          = "com.typesafe.akka"       %% "akka-remote"           % Akka           % "provided"  // ApacheV2
   val akkaSlf4j           = "com.typesafe.akka"       %% "akka-slf4j"            % Akka           % "provided"  // ApacheV2
-  val cassandraClient     = "org.apache.cassandra"    % "cassandra-clientutil"   % Cassandra       guavaExclude // ApacheV2
+  val cassandraClient     = "org.apache.cassandra"    % "cassandra-clientutil"   % Settings.cassandraTestVersion       guavaExclude // ApacheV2
   val cassandraDriver     = "com.datastax.cassandra"  % "cassandra-driver-core"  % CassandraDriver guavaExclude // ApacheV2
   val commonsLang3        = "org.apache.commons"      % "commons-lang3"          % CommonsLang3                 // ApacheV2
   val config              = "com.typesafe"            % "config"                 % Config         % "provided"  // ApacheV2
@@ -206,6 +214,7 @@ object Artifacts {
   object Test {
     val akkaTestKit       = "com.typesafe.akka"       %% "akka-testkit"                 % Akka      % "test,it"       // ApacheV2
     val commonsIO         = "commons-io"              % "commons-io"                    % CommonsIO % "test,it"       // ApacheV2
+    val scalaCheck        = "org.scalacheck"          %% "scalacheck"                   % ScalaCheck % "test,it"      // BSD
     val scalaMock         = "org.scalamock"           %% "scalamock-scalatest-support"  % ScalaMock % "test,it"       // BSD
     val scalaTest         = "org.scalatest"           %% "scalatest"                    % ScalaTest % "test,it"       // ApacheV2
     val scalactic         = "org.scalactic"           %% "scalactic"                    % Scalactic % "test,it"       // ApacheV2
@@ -237,6 +246,7 @@ object Dependencies {
     Test.commonsIO,
     Test.junit,
     Test.junitInterface,
+    Test.scalaCheck,
     Test.scalaMock,
     Test.scalaTest,
     Test.scalactic,
@@ -258,6 +268,8 @@ object Dependencies {
 
   val embedded = logging ++ spark ++ cassandra ++ Seq(
     cassandraServer % "it,test", Embedded.jopt, Embedded.sparkRepl, Embedded.kafka, Embedded.snappy, guava)
+
+  val perf = logging ++ spark ++ cassandra
 
   val kafka = Seq(Demos.kafka, Demos.kafkaStreaming)
 
