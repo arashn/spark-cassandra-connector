@@ -199,7 +199,7 @@ object WriteConf {
 
     val metricsEnabled = conf.getBoolean(TaskMetricsParam.name, TaskMetricsParam.default)
 
-    val ttlSeconds = conf.getInt(TTLParam.name, TTTLParam.default)
+    val ttlSeconds = conf.getInt(TTLParam.name, TTLParam.default)
 
     val ttlOption = if(ttlSeconds == TTLParam.default) TTLOption.defaultValue else TTLOption.constant(ttlSeconds)
 

@@ -289,6 +289,6 @@ finer control see the CassandraOption class</td>
 <tr>
   <td><code>output.ttl</code></td>
   <td>0</td>
-  <td>Time to live in seconds for the columns per insertion</td>
+  <td>Time To Live(TTL) assigned to writes to Cassandra. A value of 0 means no TTL</td>
 </tr>
 </table>

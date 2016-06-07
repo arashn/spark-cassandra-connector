@@ -123,7 +123,7 @@ class CassandraDataFrameSpec extends SparkCassandraITFlatSpecBase {
     }
 
     ttl should be > 0
-    ttl should be < 300
+    ttl should be <= 300
   }
 
   it should " be able to create a C* schema from a table" in {
